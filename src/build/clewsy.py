@@ -32,11 +32,17 @@ def create_set(set_names, new_SetItems, new_setGroups, sets):
 ################################################################################
 # Function to Add Activity List Items::Called in BuildCLEWsModel()
 ################################################################
-def AddActivityListItems(year1, region, input1, input2, List, value = None, g = "1", v = "1"):
+""" def AddActivityListItems(year1, region, input1, input2, List, value = None, g = "1", v = "1"):
     for year in year1:
         Sets = [region, input1, input2, g, year]
         Value = value
         Item = {"c": Sets, "v": v}
+        List.append(Item) """
+###Modified to include mode of operation
+def AddActivityListItems(year1, region, input1, input2, List, mode_of_operation, value, g="1", v="1"):
+    for year in year1:
+        Sets = [region, input1, input2, g, year, mode_of_operation]
+        Item = {"c": Sets, "v": value}
         List.append(Item)
 
 ################################################################################
@@ -185,22 +191,26 @@ def Appendotoole(SetNames, NewSetItems, ResidCapList, CapitalCostList, IARList, 
             CapitalCostLstItm = CapitalCostLstItm.replace("]", '\n')
             CapitalCostLstItm = CapitalCostLstItm.replace(" ", "")
             fout.write(CapitalCostLstItm)
-
+    ### JMM Added to append mode of operation
     # Output the IAR for otoole:
     #appnd IARList items to otoole output file
     with open(os.path.join(otooleOutputDirectory, 'InputActivityRatio.csv'),'w') as fout:
         with open(os.path.join(OsemosysGlobalPath, 'InputActivityRatio.csv'), 'r') as fin:
             fout.write(fin.read())
             for item in IARList:
-                fout.write(str(item['c'][0])+','+str(item['c'][1])+','+str(item['c'][2])+','+str(item['c'][3])+','+str(item['c'][4])+','+str(item['v'])+'\n')
+                fout.write(
+                f"{item['c'][0]},{item['c'][1]},{item['c'][2]},{item['c'][5]},{item['c'][4]},{item['v']}\n"
+                )
 
     # Output the OAR for otoole:
     with open(os.path.join(otooleOutputDirectory, 'OutputActivityRatio.csv'),'w') as fout:
         with open(os.path.join(OsemosysGlobalPath, 'OutputActivityRatio.csv'), 'r') as fin:
             fout.write(fin.read())
             for item in OARList:
-                fout.write(str(item['c'][0])+','+str(item['c'][1])+','+str(item['c'][2])+','+str(item['c'][3])+','+str(item['c'][4])+','+str(item['v'])+'\n')
-
+                fout.write(
+                f"{item['c'][0]},{item['c'][1]},{item['c'][2]},{item['c'][5]},{item['c'][4]},{item['v']}\n"
+                )
+    ###
     # Copy remaining files in OsemosysGlobalPath >> otooleOutputDirectory
     for file in os.listdir(OsemosysGlobalPath):
         if not os.path.exists(os.path.join(otooleOutputDirectory, file)):
@@ -572,47 +582,198 @@ def BuildCLEWsModel(data, yaml_file):
     # Once we've done this we need to treat TECHNOLOGY differently in the output section otherwise
     # everything will be duplicated.
 
+    
     # Create sectoral demand technologies
-    for sector in EndUseFuels:
-        for fuel in EndUseFuels[sector]:
-            # Create the demand fuel:
-            Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel, "#000000", "")
-            # Create the demand technology
-            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY",
-                    "DEM" + sector + fuel, "#000000", "Demand technology for ")
-            # Create the input fuel (if it doesn't exist)
-            if not fuel in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
-                if OutputFormat == 'append_otoole':
-                    if not fuel[0:3] == "ELC":
-                        Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel, "#000000", "")
-                else:
-                    Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel, "#000000", "")
-
-            # Create the input and output activity for that combination:
-            AddActivityListItems(Years, Region, "DEM" + sector + fuel, sector + fuel, OARList, value = "1")
-            AddActivityListItems(Years, Region, "DEM" + sector + fuel, fuel, IARList, value = "1")
-
+    for country in LandRegions:
+        if country in LandToGridMap:
+            #If there is regions for that country
+            for region in LandToGridMap[country]:
+                for sector in EndUseFuels:
+                    for fuel in EndUseFuels[sector]:
+                        if fuel == "ELC":
+                            ##If fuel is electricity
+                            # Create the demand fuel:
+                            Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + region + "02", "#000000", "")
+                            # Create the demand technology
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY",
+                                    "DEM" + sector + fuel + region + "02", "#000000", "Demand technology for ")
+                            # Create the input and output activity for that combination:
+                            AddActivityListItems(Years, Region, "DEM" + sector + fuel + region + "02", sector + fuel + region + "02", OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "DEM" + sector + fuel + region + "02", fuel + region + "02", IARList, "1",value = "1")
+                        else:
+                            print("ASR-Probe::sector= {0}; fuel= {1}" .format(sector, fuel))
+                            ##If fuel is not electricity and is not contained in the list of commodities
+                            if not fuel in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                if OutputFormat == 'append_otoole':
+                                    Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + fuel + country, "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + fuel + "INT", "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "SUP" + fuel + region, "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "DEM" + sector + fuel + region, "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel , "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + country, "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + "INT", "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + region, "#000000", "")
+                                    Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + region, "#000000", "")
+                                    # Create the input and output activity for that combination:
+                                    AddActivityListItems(Years, Region, "MIN" + fuel + country , fuel , OARList , "1", value = "1")
+                                    AddActivityListItems(Years, Region, "MIN" + fuel + country , fuel + country , OARList, "2", value = "1")
+                                    AddActivityListItems(Years, Region, "MIN" + fuel + "INT" , fuel, IARList, "1", value = "1")
+                                    AddActivityListItems(Years, Region, "MIN" + fuel + "INT" , fuel + "INT", OARList, "1", value = "1")
+                                    AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + "INT", IARList, "1", value = "1")
+                                    AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + country, IARList, "2", value = "1")
+                                    AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + region , OARList, "1", value = "1")
+                                    AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + region , OARList, "2", value = "1")
+                                    AddActivityListItems(Years, Region, "DEM" + sector + fuel + region , fuel + region , IARList, "1", value = "1")
+                                    AddActivityListItems(Years, Region, "DEM" + sector + fuel + region , sector + fuel + region , OARList, "1", value = "1")
+                            else:
+                                #If fuel is not electricity and is contained in the list of commodities
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "SUP" + fuel + region, "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "DEM" + sector + fuel + region, "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + region, "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + region, "#000000", "")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + "INT", IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + country, IARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + region , OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + region , fuel + region , OARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + region , fuel + region , IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + region , sector + fuel + region , OARList, "1", value = "1")
+        else:       
+            #If there is no regions for that country               
+            for sector in EndUseFuels:
+                for fuel in EndUseFuels[sector]:
+                    if fuel == "ELC":
+                            ##If fuel is electricity
+                            # Create the demand fuel:
+                            Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + country + "XX02", "#000000", "")
+                            # Create the demand technology
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY",
+                                    "DEM" + sector + fuel + country + "XX02", "#000000", "Demand technology for ")
+                            # Create the input and output activity for that combination:
+                            AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX02", sector + fuel + country + "XX02", OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX02", fuel + country + "XX02", IARList, "1", value = "1")
+                    else:
+                        ##If fuel is not electricity and is not contained in the list of commodities
+                        if not fuel in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                            if OutputFormat == 'append_otoole':
+                                print("ASR-Probe::sector= {0}; fuelllll= {1}" .format(sector, fuel))
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + fuel + country, "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + fuel + "INT", "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "SUP" + fuel + country + "XX", "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "DEM" + sector + fuel + country + "XX", "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel , "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + country, "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + "INT", "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + country + "XX", "#000000", "")
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + country + "XX", "#000000", "")
+                                print("Hello:"+ sector + fuel + country)
+                                # Create the input and output activity for that combination:
+                                AddActivityListItems(Years, Region, "MIN" + fuel + country , fuel , OARList , "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + fuel + country , fuel + country , OARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + fuel + "INT" , fuel, IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + fuel + "INT" , fuel + "INT", OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + "INT", IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country, IARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country + "XX" , OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country + "XX" , OARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX" , fuel + country + "XX" , IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX" , sector + fuel + country + "XX" , OARList, "1", value = "1")
+                        else:
+                            
+                             #If fuel is not electricity and is contained in the list of commodities
+                            print("Hellooooo:"+ sector + fuel + country)
+                            if not "SUP" + fuel + country + "XX" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + "INT", IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country, IARList, "2", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country + "XX" , OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "SUP" + fuel + country + "XX" , fuel + country + "XX" , OARList, "2", value = "1")
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "SUP" + fuel + country + "XX", "#000000", "")
+                            if not "DEM" + sector + fuel + country + "XX" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "DEM" + sector + fuel + country + "XX", "#000000", "")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX" , fuel + country + "XX" , IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "DEM" + sector + fuel + country + "XX" , sector + fuel + country + "XX" , OARList, "1", value = "1")
+                            if not fuel + country + "XX" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", fuel + country + "XX", "#000000", "")
+                            if not sector + fuel + country + "XX" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", sector + fuel + country + "XX", "#000000", "")
+                            
+                            
+    #Create Power Plants
     for powerplant in PowerPlants:
-        if not powerplant[3:6] in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
-            Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6], "#000000", "")
-        if not "PWR" + powerplant[3:6] in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
-            Fill_Set(NewSetItems, SetNames, "COMMODITY", "PWR" + powerplant[3:6], "#000000", "")
+        Value = PowerPlants[powerplant][1]
+        print("HELLO WORLD:" + Value)
+        for country in LandRegions:
+            if country in LandToGridMap:
+                #If there is regions for that country
+                for region in LandToGridMap[country]:
+                    if not "PWR" + powerplant[3:6] + region + "01" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                        if str(PowerPlants[powerplant][2]) == "RNW":
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "RNW" + powerplant[3:6]+ region, "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "PWR" + powerplant[3:6]+ region + "01", "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + region, "#000000", "")
+                            AddActivityListItems(Years, Region, "RNW" + powerplant[3:6]+ region, powerplant[3:6] + region, OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01" , powerplant[3:6] + region, IARList, "1", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01", "ELC" + region + "01", OARList, "1", value = "1")
+                        else:
+                            if not "MIN" + powerplant[3:6] + country in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + powerplant[3:6] + country, "#000000", "")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6]+ country, powerplant[3:6], OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6]+ country, powerplant[3:6] + country, OARList, "2", value = "1")
+                            if not powerplant[3:6] in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6], "#000000", "")
+                            if not "MIN" + powerplant[3:6] + "INT" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + powerplant[3:6] + "INT", "#000000", "")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6] + "INT", powerplant[3:6], IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6] + "INT", powerplant[3:6] + "INT", OARList, "1", value = "1")
+                            if not powerplant[3:6] + "INT" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + "INT", "#000000", "")
+                            if not powerplant[3:6] + country in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + country, "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "PWR" + powerplant[3:6]+ region + "01", "#000000", "")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01" , powerplant[3:6] + "INT", IARList, "1", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01" , powerplant[3:6] + country, IARList, "2", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01", "ELC" + region + "01", OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ region + "01", "ELC" + region + "01", OARList, "2", value = "1")
+            else:
+                #If there is no regions for that country
+                if not "PWR" + powerplant[3:6] + country + "XX01" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                        if str(PowerPlants[powerplant][2]) == "RNW":
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "RNW" + powerplant[3:6]+ country + "XX", "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "PWR" + powerplant[3:6]+ country + "XX01", "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + country + "XX", "#000000", "")
+                            AddActivityListItems(Years, Region, "RNW" + powerplant[3:6]+ country + "XX", powerplant[3:6] + country + "XX", OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01" , powerplant[3:6] + country + "XX", IARList, "1", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01", "ELC" + country + "XX01", OARList, "1", value = "1")
+                        else:
+                            if not "MIN" + powerplant[3:6] + country in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + powerplant[3:6] + country, "#000000", "")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6]+ country, powerplant[3:6], OARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6]+ country, powerplant[3:6] + country, OARList, "2", value = "1")
+                            if not powerplant[3:6] in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6], "#000000", "")
+                            if not "MIN" + powerplant[3:6] + "INT" in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
+                                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "MIN" + powerplant[3:6] + "INT", "#000000", "")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6] + "INT", powerplant[3:6], IARList, "1", value = "1")
+                                AddActivityListItems(Years, Region, "MIN" + powerplant[3:6] + "INT", powerplant[3:6] + "INT", OARList, "1", value = "1")
+                            if not powerplant[3:6] + "INT" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + "INT", "#000000", "")
+                            if not powerplant[3:6] + country in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                                Fill_Set(NewSetItems, SetNames, "COMMODITY", powerplant[3:6] + country, "#000000", "")
+                            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "PWR" + powerplant[3:6]+ country + "XX" + "01", "#000000", "")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01" , powerplant[3:6] + "INT", IARList, "1", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01" , powerplant[3:6] + country, IARList, "2", value = str(PowerPlants[powerplant][1]))
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01", "ELC" + country + "XX01", OARList, "1", value = "1")
+                            AddActivityListItems(Years, Region, "PWR" + powerplant[3:6]+ country + "XX01", "ELC" + country + "XX01", OARList, "2", value = "1")
 
-            AddActivityListItems(Years, Region, "DEMPWR" + powerplant[3:6], powerplant[3:6], IARList, value = "1")
-            AddActivityListItems(Years, Region, "DEMPWR" + powerplant[3:6], "PWR" + powerplant[3:6], OARList, value = "1")
-        if not "DEMPWR" + powerplant[3:6] in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
-            Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", "DEMPWR" + powerplant[3:6], "#000000", "")
+                """ # Create ELC001 commodity if not already created.  But do this per land region (using the first character of the last three digits of the power plant as the key):
+                if not "ELC" + powerplant[6:7] + "01" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
+                    Fill_Set(NewSetItems, SetNames, "COMMODITY", "ELC" + powerplant[6:7] + "01", "#000000", "")
+                Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", powerplant, "#000000", PowerPlants[powerplant][0])
 
-        # Create ELC001 commodity if not already created.  But do this per land region (using the first character of the last three digits of the power plant as the key):
-        if not "ELC" + powerplant[6:7] + "01" in [li['value'] for li in NewSetItems[SetNames.index("COMMODITY")]]:
-            Fill_Set(NewSetItems, SetNames, "COMMODITY", "ELC" + powerplant[6:7] + "01", "#000000", "")
-        Fill_Set(NewSetItems, SetNames, "TECHNOLOGY", powerplant, "#000000", PowerPlants[powerplant][0])
+                AddActivityListItems(Years, Region, powerplant, "PWR" + powerplant[3:6], IARList, value = str(PowerPlants[powerplant][1]),
+                        v = str(PowerPlants[powerplant][1]))
+                AddActivityListItems(Years, Region, powerplant, "ELC" + powerplant[6:7] + "01", OARList, value = "1") """
 
-        AddActivityListItems(Years, Region, powerplant, "PWR" + powerplant[3:6], IARList, value = str(PowerPlants[powerplant][1]),
-                v = str(PowerPlants[powerplant][1]))
-        AddActivityListItems(Years, Region, powerplant, "ELC" + powerplant[6:7] + "01", OARList, value = "1")
-
-        # Create input surface water.
+                """ # Create input surface water.
         LandRegion = [k for k, v in LandToGridMap.items() if v == powerplant[6:7]][0]
         if not "DEMPWRSUR" + LandRegion in [li['value'] for li in NewSetItems[SetNames.index("TECHNOLOGY")]]:
             Fill_Set(NewSetItems, SetNames, "TECHNOLOGY","DEMPWRSUR" + LandRegion,
@@ -627,7 +788,7 @@ def BuildCLEWsModel(data, yaml_file):
         AddActivityListItems(Years, Region, powerplant, "PWRWAT" + LandRegion, IARList, value = str(PowerPlants[powerplant][2]),
                 v = str(PowerPlants[powerplant][2]))
         AddActivityListItems(Years, Region, powerplant, "WTRSUR" + LandRegion, OARList, value = str(PowerPlants[powerplant][3]),
-                v = str(PowerPlants[powerplant][3]))
+                v = str(PowerPlants[powerplant][3])) """
 
     # Create import fuels
     for fuel in ImportFuels:
@@ -675,7 +836,7 @@ def BuildCLEWsModel(data, yaml_file):
     ################################################
     # AGRICULTURAL TECHNOLOGIES, FUELS AND Input Activity Ratio (IAR)/Output Activity Ratio (OAR)
     ################################################
-    # Create groups for sets to track commodities, technologies
+    """ # Create groups for sets to track commodities, technologies
     # Don't need groups for these for agriculture - can add later if needed...
     # Make all set colour black for the time being - can change later if needed...
     CropList = {}
@@ -995,8 +1156,8 @@ def BuildCLEWsModel(data, yaml_file):
             # Add the OAR
             AddActivityListItems(Years, Region, transformationtech[0], transformationtech[3], OARList, value = str(transformationtech[4]),
                 g = transformationtech[6], v = str(transformationtech[4]))
-
-    ################################################
+ """
+    """ ################################################
     # ADD MODES OF OPERATION
     SetNames.append("MODE_OF_OPERATION")
     NewSetItems.append([])
@@ -1024,7 +1185,7 @@ def BuildCLEWsModel(data, yaml_file):
 #        print("Creating dataout_dir= {0}" .format(dataout_dir))
 #        os.makedirs(dataout_dir)
 #    with open(OperationModesOut, 'w') as ModeFile:
-#        ModeFile.write(str(ModeList))
+#        ModeFile.write(str(ModeList)) """
 
     ################################################
     # Residual Capacity dataframe- PWR techs & reduce dataframe linearly vs. cutoff at 2025
